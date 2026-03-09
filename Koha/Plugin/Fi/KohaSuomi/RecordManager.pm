@@ -67,6 +67,17 @@ sub uninstall() {
     return 1;
 }
 
+sub tool {
+    my ( $self, $args ) = @_;
+    my $cgi = $self->{'cgi'};
+
+    my $template = $self->get_template({ file => 'tool.tt' });
+    
+    print $cgi->header(-charset    => 'utf-8');
+    print $template->output();
+}
+
+
 sub api_routes {
     my ( $self, $args ) = @_;
 
