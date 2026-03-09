@@ -247,9 +247,17 @@ foreach my $host (@host_records) {
         my $title_idx = int(rand(scalar @component_titles));
         my $title = $component_titles[$title_idx];
         
+        my $component_control_number = 200000 + $component_count;
+        
         my $marc = MARC::Record->new();
         $marc->encoding('UTF-8');
         $marc->leader('00000naa a2200000 a 4500');
+        
+        # Add control number for the component part
+        $marc->append_fields(
+            MARC::Field->new('001', "$component_control_number"),
+            MARC::Field->new('003', $host->{cni}),
+        );
         
         # Add author and title
         $marc->append_fields(
@@ -305,12 +313,19 @@ for (my $i = 1; $i <= $num_orphans; $i++) {
     my $title = $component_titles[$title_idx];
     
     my $cni = $cni_prefixes[int(rand(scalar @cni_prefixes))];
-    # Use control numbers that don't exist (900000+)
-    my $nonexistent_control = 900000 + $i;
+    # Use control numbers that don't exist (999000+) - far from orphan's own 001 (800xxx)
+    my $nonexistent_control = 999000 + $i;
+    my $orphan_control = 800000 + $i;
     
     my $marc = MARC::Record->new();
     $marc->encoding('UTF-8');
     $marc->leader('00000naa a2200000 a 4500');
+    
+    # Add control number for the orphan itself
+    $marc->append_fields(
+        MARC::Field->new('001', "$orphan_control"),
+        MARC::Field->new('003', $cni),
+    );
     
     # Add author and title
     $marc->append_fields(
@@ -416,7 +431,7 @@ DESCRIPTION:
        - Have MARC 773$w pointing to NON-EXISTENT control numbers
        - These should appear in the orphan records API
     
-    The orphan records use control numbers 900000+ which don't exist,
+    The orphan records use control numbers 999000+ which don't exist,
     making them easy to identify in the orphan detection system.
 
 HELP
