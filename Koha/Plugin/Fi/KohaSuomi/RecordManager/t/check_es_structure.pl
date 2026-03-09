@@ -46,7 +46,7 @@ eval {
     if ($total == 0) {
         print "⚠️  Index is empty! Run:\n";
         print "   1. ./populate_test_data.pl --verbose\n";
-        print "   2. /usr/share/koha/bin/search_tools/rebuild_elasticsearch.pl -b -v\n";
+        print "   2. ~/Koha/misc/search_tools/rebuild_elasticsearch.pl -b -r -v\n";
         exit 1;
     }
     

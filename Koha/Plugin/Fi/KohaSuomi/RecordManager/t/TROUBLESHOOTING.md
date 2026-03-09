@@ -76,7 +76,7 @@ This reveals:
 ./populate_test_data.pl --hosts=10 --components=3 --orphans=5 --verbose
 
 # Then rebuild the Elasticsearch index
-perl rebuild_elasticsearch.pl -b -r -v
+perl ~/Koha/misc/search_tools/rebuild_elasticsearch.pl -b -r -v
 ```
 
 ## Step 4: Fix Field Name Mismatches

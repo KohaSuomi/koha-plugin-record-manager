@@ -163,7 +163,7 @@ if (!$es_config) {
             
             if ($doc_count == 0) {
                 print "   ⚠️  Index is empty! Records need to be indexed.\n";
-                print "   Reindex with: /usr/share/koha/bin/search_tools/rebuild_elasticsearch.pl -b -v\n";
+                print "   Reindex with: ~/Koha/misc/search_tools/rebuild_elasticsearch.pl -b -r -v\n";
             } elsif ($doc_count < $total_biblios) {
                 print "   ⚠️  Some records may not be indexed ($doc_count indexed vs $total_biblios in DB)\n";
                 print "   Consider reindexing\n";
