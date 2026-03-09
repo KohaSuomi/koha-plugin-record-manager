@@ -71,7 +71,7 @@ sub index_name {
 sub nodes {
     my ($self) = @_;
     my $config_file = $self->config();
-    return $config_file->{'nodes'} || 'localhost:9201';
+    return $config_file->{'server'}[0] || 'localhost:9200';
 }
 
 sub elasticsearch_client {
@@ -112,6 +112,23 @@ sub search_records {
     return ($scroll_id, $results, $total);
 }
 
+sub search_records_no_scroll {
+    my ($self, $body, $params) = @_;
+
+    $body->{size} = $params->{size} // 1;
+    my $results = $self->elasticsearch_client()->search(
+        index => $self->index_name(),
+        body  => $body,
+        # NO scroll parameter - this is a simple query
+    );
+
+    my $total = $results->{hits}{total};
+    # In ES 7.x+, total can be a hashref: { value => N, relation => 'eq' }
+    $total = $total->{value} if ref($total) eq 'HASH';
+    
+    return ($results, $total);
+}
+
 sub search_host_records {
     my ($self, $control_number, $cni_control_number) = @_;
     
@@ -135,9 +152,10 @@ sub search_host_records {
         }
     };
     
-    my ($scroll_id, $results, $total) = $self->search_records($query, {size => 1});
+    # Use non-scrolling search since we only need to check existence (size=1)
+    my ($results, $total) = $self->search_records_no_scroll($query, {size => 1});
     
-    return ($scroll_id, $results, $total);
+    return ($results, $total);
 }
 
 sub search_component_parts {
