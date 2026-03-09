@@ -90,17 +90,18 @@ sub get_orphan_records {
                 my $component_id = $hit->{_id};
                 my $w            = $component->{'record-control-number-773w'}[0];
                 my $cni          = $component->{'cni'}[0];
+                my $control_number = $component->{'control-number'}[0] || '';
                 #next unless $cni =~ /^(FI-MELINDA|FI-BTJ|FI-TATI)$/;
                 next unless $w;
-                my ($control_number) = $w =~ /(\d+)/;
-                my $cni_control_number = "($cni)$control_number";
+                my ($host_control_number) = $w =~ /(\d+)/;
+                my $host_cni_control_number = "($cni)$host_control_number";
                 
                 # Check if host record does not exist
-                if ( !$self->host_record_exists($control_number, $cni_control_number) ) {
+                if ( !$self->host_record_exists($host_control_number, $host_cni_control_number) ) {
                     push @all_orphans, {
                         id => $component_id,
-                        control_number => $control_number,
-                        cni_control_number => $cni_control_number,
+                        control_number => $control_number || '',
+                        control_number_identifier => $cni || '',
                         title => $component->{'title'}[0] || '',
                         'host-item' => $component->{'host-item'}[0] || '',
                         'record-control-number-773w' => $component->{'record-control-number-773w'}[0] || '',
@@ -149,7 +150,7 @@ sub host_record_exists {
     return 0 unless $control_number;
 
     my $search = Koha::Plugin::Fi::KohaSuomi::RecordManager::Modules::Search->new({size => 1});
-    my ($scroll_id, $results, $total) = $search->search_host_records($control_number, $cni_control_number);
+    my ($results, $total) = $search->search_host_records($control_number, $cni_control_number);
     
     # Return true (1) if host record exists (total > 0), false (0) otherwise
     return $total > 0 ? 1 : 0;
