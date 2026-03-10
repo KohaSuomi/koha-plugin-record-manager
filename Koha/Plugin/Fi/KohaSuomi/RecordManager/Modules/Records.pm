@@ -213,23 +213,154 @@ sub find_possible_hosts {
     if ($results && $results->{hits}{hits}) {
         foreach my $hit (@{$results->{hits}{hits}}) {
             my $source = $hit->{_source};
+            
+            # Extract hit data
+            my $hit_title = $source->{title}[0] || '';
+            my $hit_author = $source->{author}[0] || '';
+            my $hit_isbn = $source->{isbn}[0] || '';
+            my $hit_issn = $source->{issn}[0] || '';
+            
+            # Filter: only include hits that have actual similarity to search criteria
+            my $matches = 0;
+            
+            # Check title similarity (case-insensitive partial match)
+            if ($host_item_data->{title} && $hit_title) {
+                my $search_title = lc($host_item_data->{title});
+                my $result_title = lc($hit_title);
+                if (index($result_title, $search_title) != -1 || index($search_title, $result_title) != -1) {
+                    $matches++;
+                }
+            }
+            
+            # Check author similarity (case-insensitive partial match)
+            if ($host_item_data->{author} && $hit_author) {
+                my $search_author = lc($host_item_data->{author});
+                my $result_author = lc($hit_author);
+                if (index($result_author, $search_author) != -1 || index($search_author, $result_author) != -1) {
+                    $matches++;
+                }
+            }
+            
+            # Check ISBN match (exact match, normalized)
+            if ($host_item_data->{isbn} && $hit_isbn) {
+                my $search_isbn = $host_item_data->{isbn};
+                my $result_isbn = $hit_isbn;
+                $search_isbn =~ s/[^0-9X]//gi;
+                $result_isbn =~ s/[^0-9X]//gi;
+                if (lc($search_isbn) eq lc($result_isbn)) {
+                    $matches += 2; # ISBN is stronger match
+                }
+            }
+            
+            # Check ISSN match (exact match, normalized)
+            if ($host_item_data->{issn} && $hit_issn) {
+                my $search_issn = $host_item_data->{issn};
+                my $result_issn = $hit_issn;
+                $search_issn =~ s/[^0-9X]//gi;
+                $result_issn =~ s/[^0-9X]//gi;
+                if (lc($search_issn) eq lc($result_issn)) {
+                    $matches += 2; # ISSN is stronger match
+                }
+            }
+            
+            # Only include if there's at least one match
+            next unless $matches > 0;
+            
             push @possible_hosts, {
                 biblionumber => $hit->{_id},
                 score => $hit->{_score},
-                title => $source->{title}[0] || '',
-                author => $source->{author}[0] || '',
+                title => $hit_title,
+                author => $hit_author,
                 control_number => $source->{'control-number'}[0] || '',
-                isbn => $source->{isbn}[0] || '',
-                issn => $source->{issn}[0] || '',
+                isbn => $hit_isbn,
+                issn => $hit_issn,
             };
         }
     }
     
     return {
         possible_hosts => \@possible_hosts,
-        total => $total,
+        total => scalar(@possible_hosts),
         component_data => $host_item_data,
     };
+}
+
+=head2 combine_orphan_to_host
+
+    my $result = $records->combine_orphan_to_host($orphan_biblionumber, $host_biblionumber);
+
+Combine an orphan record to a host record by updating the orphan's 773$w field
+with the host's control number (001 field).
+
+Parameters:
+    $orphan_biblionumber - the biblionumber of the orphan (component part) record
+    $host_biblionumber   - the biblionumber of the host record
+
+Returns:
+    On success: 1
+    On error: hashref containing:
+        - error: 1 to indicate an error occurred
+        - message: descriptive error message
+
+=cut
+
+sub combine_orphan_to_host {
+    my ($self, $orphan_biblionumber, $host_biblionumber) = @_;
+    
+    # Validate parameters
+    return { error => 1, message => 'Orphan biblionumber is required' }
+        unless $orphan_biblionumber;
+    return { error => 1, message => 'Host biblionumber is required' }
+        unless $host_biblionumber;
+    
+    # Get the orphan record
+    my $orphan_biblio = Koha::Biblios->find($orphan_biblionumber);
+    return { error => 1, message => "Orphan record not found: $orphan_biblionumber" }
+        unless $orphan_biblio;
+    
+    # Get the host record
+    my $host_biblio = Koha::Biblios->find($host_biblionumber);
+    return { error => 1, message => "Host record not found: $host_biblionumber" }
+        unless $host_biblio;
+    
+    # Get MARC records
+    my $orphan_marcrecord = $orphan_biblio->metadata->record;
+    return { error => 1, message => 'Orphan MARC record not found' }
+        unless $orphan_marcrecord;
+    
+    my $host_marcrecord = $host_biblio->metadata->record;
+    return { error => 1, message => 'Host MARC record not found' }
+        unless $host_marcrecord;
+    
+    # Get host's control number (001 field)
+    my $host_control_number_field = $host_marcrecord->field('001');
+    return { error => 1, message => 'Host record has no control number (001 field)' }
+        unless $host_control_number_field;
+    
+    my $host_control_number = $host_control_number_field->data();
+    return { error => 1, message => 'Host control number is empty' }
+        unless $host_control_number;
+    
+    # Check if orphan has 773 field
+    my $field_773 = $orphan_marcrecord->field('773');
+    return { error => 1, message => 'Orphan record has no 773 field' }
+        unless $field_773;
+    
+    # Update 773$w with host's control number
+    # First, check if $w subfield exists
+    if ($field_773->subfield('w')) {
+        # Update existing $w subfield
+        $field_773->update('w' => $host_control_number);
+    } else {
+        # Add new $w subfield
+        $field_773->add_subfields('w' => $host_control_number);
+    }
+    
+    # Save the updated orphan record
+    my $frameworkcode = $orphan_biblio->frameworkcode;
+    C4::Biblio::ModBiblio($orphan_marcrecord, $orphan_biblionumber, $frameworkcode);
+    
+    return 1;
 }
 
 =head1 AUTHOR

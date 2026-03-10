@@ -104,5 +104,59 @@ sub find_possible_hosts {
     };
 }
 
+sub combine_orphan_to_host {
+    ## This method combines an orphan record to a host record
+    ## Updates the orphan's 773$w field with the host's control number
+    my $c = shift->openapi->valid_input or return;
+    my $logger = Koha::Logger->get({ interface => 'api' });
+
+    # Get parameters from request body
+    my $body = $c->validation->param('body');
+    my $orphan_biblionumber = $body->{orphan_biblionumber};
+    my $host_biblionumber = $body->{host_biblionumber};
+    
+    # Validate parameters
+    unless ($orphan_biblionumber) {
+        return $c->render(
+            status => 400,
+            openapi => { error => "orphan_biblionumber is required" }
+        );
+    }
+    
+    unless ($host_biblionumber) {
+        return $c->render(
+            status => 400,
+            openapi => { error => "host_biblionumber is required" }
+        );
+    }
+
+    try {
+        my $records = Koha::Plugin::Fi::KohaSuomi::RecordManager::Modules::Records->new();
+        my $result = $records->combine_orphan_to_host($orphan_biblionumber, $host_biblionumber);
+
+        if ($result->{error}) {
+            return $c->render(
+                status => 400,
+                openapi => { error => $result->{message} }
+            );
+        } else {
+            return $c->render(
+                status => 200,
+                openapi => { message => "Updated successfully" }
+            );
+        }
+
+        
+    }
+    catch {
+        my $error = $_;
+        $logger->error("Failed to combine orphan to host: $error");
+        return $c->render(
+            status => 500, 
+            openapi => { error => "Failed to combine orphan to host: $error" }
+        );
+    };
+}
+
 1;
 

@@ -288,6 +288,8 @@ sub search_possible_hosts {
                 ],
             },
         },
+        # Filter out low-scoring/irrelevant results
+        min_score => 1.0,
         # Sort by relevance score
         sort => ['_score'],
     };

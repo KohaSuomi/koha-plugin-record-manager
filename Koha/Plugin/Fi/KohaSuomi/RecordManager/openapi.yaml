@@ -179,3 +179,62 @@
     x-koha-authorization:
       permissions:
         catalogue: "1"
+
+"/records/orphans/combine":
+  post:
+    x-mojo-to: "Fi::KohaSuomi::RecordManager::Controllers::RecordController#combine_orphan_to_host"
+    operationId: combineOrphanToHost
+    tags:
+      - records
+    summary: Combine an orphan record to a host record
+    description: |
+      Update an orphan (component part) record's 773$w field with the control number 
+      of a host record, effectively linking them together.
+    parameters:
+      - name: body
+        in: body
+        description: Orphan and host biblionumbers
+        required: true
+        schema:
+          type: object
+          required:
+            - orphan_biblionumber
+            - host_biblionumber
+          properties:
+            orphan_biblionumber:
+              type: integer
+              description: The biblionumber of the orphan (component part) record
+            host_biblionumber:
+              type: integer
+              description: The biblionumber of the host record
+    produces:
+      - application/json
+    responses:
+      "200":
+        description: Successfully combined orphan to host
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Success message
+      "400":
+        description: Bad request - validation error or operation failed
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              description: Error message explaining why the operation failed
+      "500":
+        description: Internal server error
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              description: Error message
+    x-koha-authorization:
+      permissions:
+        editcatalogue: "edit_catalogue"
+
