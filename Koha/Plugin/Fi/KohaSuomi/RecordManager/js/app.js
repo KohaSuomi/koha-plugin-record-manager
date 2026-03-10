@@ -6,6 +6,7 @@ const app = Vue.createApp({
             error: null,
             selectedContent: null,
             loading: true,
+            loading_modal: false,
             possible_hosts: []
         };
     },
@@ -17,13 +18,14 @@ const app = Vue.createApp({
                     this.contents = response.data.orphans;
                 })
                 .catch(error => {
-                    console.error('Error fetching contents:', error);
-                    this.error = 'An error occurred while fetching the contents';
+                    console.error('virhe haettaessa emoja:', error);
+                    this.error = 'Virhe tietoja haettaessa';
                 }).finally(() => {
                     this.loading = false;
                 });
         }, 
         fetchPossibleHosts(id) {
+            this.loading_modal = true;
             axios.get(`/api/v1/contrib/kohasuomi/records/orphans/${id}/possible-hosts`)
                 .then(response => {
                     this.possible_hosts = response.data.possible_hosts;
@@ -31,6 +33,8 @@ const app = Vue.createApp({
                 .catch(error => {
                     console.error('Error fetching possible hosts:', error);
                     this.error = 'An error occurred while fetching possible hosts';
+                }).finally(() => {
+                    this.loading_modal = false;
                 });
         }
     },

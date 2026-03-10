@@ -24,6 +24,9 @@
         </nav>
         <div id="recordManagerApp">
             <h1>Record Manager - Työkalut</h1>
+            <div v-if="error" class="alert alert-danger" role="alert">
+                {{ error }}
+            </div>
              <div v-if="loading" class="text-center my-5">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Ladataan...</span>
@@ -60,7 +63,13 @@
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Sulje"></button>
                         </div>
                         <div class="modal-body">
-                            <table class="table table-bordered table-striped">
+                            <div v-if="loading_modal" class="text-center my-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Ladataan...</span>
+                                </div>
+                                <div class="mt-2">Ladataan tietueita...</div>
+                            </div>
+                            <table v-if="!loading_modal" class="table table-bordered table-striped">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Osumatarkkuus</th>
@@ -71,7 +80,7 @@
                                 </thead>
                                 <tbody>
                                     <tr v-for="host in possible_hosts" :key="host.id">
-                                        <td>{{ host.score }}</td>
+                                        <td>{{ Math.round(host.score) }}%</td>
                                         <td>{{ host.control_number }}</td>
                                         <td>{{ host.author }},{{ host.title }}, {{ host.isbn }}, {{ host.issn }}</td>
                                         <td><a :href="'/cgi-bin/koha/catalogue/detail.pl?biblionumber=' + host.biblionumber" target="_blank" class="btn btn-secondary btn-sm">Avaa tietue</a></td>
