@@ -40,13 +40,16 @@
                     description: Component record identifier
                   control_number:
                     type: string
-                    description: Host record control number
-                  cni_control_number:
+                    description: Control number of the component record
+                  control_number_identifier:
                     type: string
-                    description: CNI control number (e.g., FI-MELINDA)123456
+                    description: Control number identifier (e.g., FI-MELINDA, FI-BTJ, FI-TATI)
                   title:
                     type: string
                     description: Component part title
+                  author:
+                    type: string
+                    description: Component part author
                   host_item:
                     type: string
                     description: Host item information from MARC 773 field (contains author, title, etc.)
