@@ -23,5 +23,5 @@ echo "Setting permissions for www-data"
 sudo chown -R www-data:www-data $kohaplugindir/Koha/Plugin/Fi/KohaSuomi/
 
 # Install plugins as koha
-sudo -ukoha $KOHA_PATH/misc/devel/install_plugins.pl
+sudo -uharkkari $KOHA_PATH/misc/devel/install_plugins.pl
 

@@ -103,8 +103,8 @@ sub get_orphan_records {
                         control_number => $control_number || '',
                         control_number_identifier => $cni || '',
                         title => $component->{'title'}[0] || '',
-                        'host-item' => $component->{'host-item'}[0] || '',
-                        'record-control-number-773w' => $component->{'record-control-number-773w'}[0] || '',
+                        'host_item' => $component->{'host-item'}[0] || '',
+                        '773w' => $component->{'record-control-number-773w'}[0] || '',
                     };
                 }
                 $processed++;

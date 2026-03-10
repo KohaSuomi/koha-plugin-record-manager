@@ -47,10 +47,10 @@
                   title:
                     type: string
                     description: Component part title
-                  host-item:
+                  host_item:
                     type: string
                     description: Host item information from MARC 773 field (contains author, title, etc.)
-                  record-control-number-773w:
+                  773w:
                     type: string
                     description: MARC 773$w field value (control number reference)
             pagination:
