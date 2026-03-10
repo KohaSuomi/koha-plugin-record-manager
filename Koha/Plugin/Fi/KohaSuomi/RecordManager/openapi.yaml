@@ -49,10 +49,10 @@
                     description: Component part title
                   host-item:
                     type: string
-                    description: Host item information
+                    description: Host item information from MARC 773 field (contains author, title, etc.)
                   record-control-number-773w:
                     type: string
-                    description: MARC 773$w field value
+                    description: MARC 773$w field value (control number reference)
             pagination:
               type: object
               properties:
@@ -68,6 +68,106 @@
                 total_pages:
                   type: integer
                   description: Total number of pages
+      "500":
+        description: Internal server error
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              description: Error message
+    x-koha-authorization:
+      permissions:
+        catalogue: "1"
+
+"/records/orphans/{biblionumber}/possible-hosts":
+  get:
+    x-mojo-to: "Fi::KohaSuomi::RecordManager::Controllers::RecordController#find_possible_hosts"
+    operationId: findPossibleHosts
+    tags:
+      - records
+    summary: Find possible host records for a component part
+    description: |
+      Search for possible host records for a component part using the host-item (773) field data.
+      This searches by title, author, ISBN, and ISSN from the 773 field to find matching host records.
+    parameters:
+      - name: biblionumber
+        in: path
+        description: The biblionumber of the component part record
+        required: true
+        type: integer
+    produces:
+      - application/json
+    responses:
+      "200":
+        description: List of possible host records found
+        schema:
+          type: object
+          properties:
+            biblionumber:
+              type: integer
+              description: The biblionumber of the component part
+            possible_hosts:
+              type: array
+              items:
+                type: object
+                properties:
+                  biblionumber:
+                    type: string
+                    description: Host record biblionumber
+                  score:
+                    type: number
+                    description: Relevance score from Elasticsearch
+                  title:
+                    type: string
+                    description: Host record title
+                  author:
+                    type: string
+                    description: Host record author
+                  control_number:
+                    type: string
+                    description: Host record control number
+                  isbn:
+                    type: string
+                    description: Host record ISBN
+                  issn:
+                    type: string
+                    description: Host record ISSN
+            total:
+              type: integer
+              description: Total number of possible hosts found
+            component_data:
+              type: object
+              description: Data extracted from component part's 773 field used for searching
+              properties:
+                title:
+                  type: string
+                  description: Title from 773$t
+                author:
+                  type: string
+                  description: Author from 773$a
+                isbn:
+                  type: string
+                  description: ISBN from 773$z
+                issn:
+                  type: string
+                  description: ISSN from 773$x
+      "400":
+        description: Bad request - biblionumber is required
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              description: Error message
+      "404":
+        description: Record not found or no 773 field present
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              description: Error message
       "500":
         description: Internal server error
         schema:

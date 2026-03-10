@@ -32,7 +32,7 @@ sub list_orphans {
 
         my $total = $result->{total};
         my $total_pages = int(($total + $per_page - 1) / $per_page);
-        
+
         return $c->render(
             status => 200, 
             openapi => {
@@ -52,6 +52,54 @@ sub list_orphans {
         return $c->render(
             status => 500, 
             openapi => { error => "Failed to retrieve orphan records: $error" }
+        );
+    };
+}
+
+sub find_possible_hosts {
+    ## This method finds possible host records for a component part
+    ## Uses the 773 (host-item) field data to search for matching records
+    my $c = shift->openapi->valid_input or return;
+    my $logger = Koha::Logger->get({ interface => 'api' });
+
+    # Get biblionumber from path parameter
+    my $biblionumber = $c->validation->param('biblionumber');
+    
+    unless ($biblionumber) {
+        return $c->render(
+            status => 400,
+            openapi => { error => "biblionumber is required" }
+        );
+    }
+
+    try {
+        my $records = Koha::Plugin::Fi::KohaSuomi::RecordManager::Modules::Records->new();
+        my $result = $records->find_possible_hosts($biblionumber);
+
+        # Check if there was an error
+        if ($result->{error}) {
+            return $c->render(
+                status => 404,
+                openapi => { error => $result->{error} }
+            );
+        }
+
+        return $c->render(
+            status => 200, 
+            openapi => {
+                biblionumber => $biblionumber,
+                possible_hosts => $result->{possible_hosts},
+                total => $result->{total},
+                component_data => $result->{component_data}
+            }
+        );
+    }
+    catch {
+        my $error = $_;
+        $logger->error("Failed to find possible hosts for biblionumber $biblionumber: $error");
+        return $c->render(
+            status => 500, 
+            openapi => { error => "Failed to find possible hosts: $error" }
         );
     };
 }

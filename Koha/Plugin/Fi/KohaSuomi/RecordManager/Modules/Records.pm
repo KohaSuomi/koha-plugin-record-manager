@@ -156,6 +156,82 @@ sub host_record_exists {
     return $total > 0 ? 1 : 0;
 }
 
+=head2 find_possible_hosts
+
+    my $result = $records->find_possible_hosts($component_biblionumber);
+
+Find possible host records for a component part by searching Elasticsearch using
+the host-item field (773) data. This is useful when the control number doesn't
+match any existing record but the record might still exist with different metadata.
+
+Parameters:
+    $component_biblionumber - the biblionumber of the component part
+
+Returns:
+    hashref containing:
+        - possible_hosts: arrayref of potential host records with score
+        - total: total number of potential hosts found
+        - component_data: data from the component part used for searching
+
+=cut
+
+sub find_possible_hosts {
+    my ($self, $component_biblionumber) = @_;
+    
+    return { possible_hosts => [], total => 0, error => 'No biblionumber provided' }
+        unless $component_biblionumber;
+    
+    # Get the component part record from Koha
+    my $biblio = Koha::Biblios->find($component_biblionumber);
+    return { possible_hosts => [], total => 0, error => 'Record not found' }
+        unless $biblio;
+    
+    my $marcrecord = $biblio->metadata->record;
+    return { possible_hosts => [], total => 0, error => 'No MARC record found' }
+        unless $marcrecord;
+    
+    # Extract host-item field data (773)
+    my $field_773 = $marcrecord->field('773');
+    return { possible_hosts => [], total => 0, error => 'No 773 field found' }
+        unless $field_773;
+    
+    # Extract relevant subfields from 773
+    my $host_item_data = {};
+    $host_item_data->{title}  = $field_773->subfield('t') if $field_773->subfield('t');
+    $host_item_data->{author} = $field_773->subfield('a') if $field_773->subfield('a');
+    $host_item_data->{isbn}   = $field_773->subfield('z') if $field_773->subfield('z');
+    $host_item_data->{issn}   = $field_773->subfield('x') if $field_773->subfield('x');
+    
+    return { possible_hosts => [], total => 0, error => 'No searchable data in 773 field' }
+        unless keys %$host_item_data;
+    
+    # Search for possible hosts
+    my $search = Koha::Plugin::Fi::KohaSuomi::RecordManager::Modules::Search->new({size => 10});
+    my ($results, $total) = $search->search_possible_hosts($host_item_data);
+    
+    my @possible_hosts;
+    if ($results && $results->{hits}{hits}) {
+        foreach my $hit (@{$results->{hits}{hits}}) {
+            my $source = $hit->{_source};
+            push @possible_hosts, {
+                biblionumber => $hit->{_id},
+                score => $hit->{_score},
+                title => $source->{title}[0] || '',
+                author => $source->{author}[0] || '',
+                control_number => $source->{'control-number'}[0] || '',
+                isbn => $source->{isbn}[0] || '',
+                issn => $source->{issn}[0] || '',
+            };
+        }
+    }
+    
+    return {
+        possible_hosts => \@possible_hosts,
+        total => $total,
+        component_data => $host_item_data,
+    };
+}
+
 =head1 AUTHOR
 
 Johanna Räisä <johanna.raisa@koha-suomi.fi>

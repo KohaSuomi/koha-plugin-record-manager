@@ -195,6 +195,109 @@ sub clear_scroll {
     );
 }
 
+=head2 search_possible_hosts
+
+    my ($results, $total) = $search->search_possible_hosts($host_item_data);
+
+Search for possible host records based on host-item field data from component parts.
+Uses title, author, and other metadata from the 773 field to find matching records.
+
+Parameters:
+    $host_item_data - hashref containing:
+        - title: title from 773$t
+        - author: author from 773$a
+        - isbn: ISBN from 773$z
+        - issn: ISSN from 773$x
+
+=cut
+
+sub search_possible_hosts {
+    my ($self, $host_item_data) = @_;
+    
+    return (undef, 0) unless $host_item_data;
+    
+    my @should_clauses;
+    
+    # Search by title from 773$t (host-item title)
+    if ($host_item_data->{title}) {
+        push @should_clauses, {
+            match => {
+                title => {
+                    query => $host_item_data->{title},
+                    boost => 3.0,
+                }
+            }
+        };
+        # Also try title-series field
+        push @should_clauses, {
+            match => {
+                'title-series' => {
+                    query => $host_item_data->{title},
+                    boost => 2.5,
+                }
+            }
+        };
+    }
+    
+    # Search by author from 773$a
+    if ($host_item_data->{author}) {
+        push @should_clauses, {
+            match => {
+                author => {
+                    query => $host_item_data->{author},
+                    boost => 2.0,
+                }
+            }
+        };
+    }
+    
+    # Search by ISBN from 773$z
+    if ($host_item_data->{isbn}) {
+        push @should_clauses, {
+            term => {
+                'isbn' => {
+                    value => $host_item_data->{isbn},
+                    boost => 5.0,
+                }
+            }
+        };
+    }
+    
+    # Search by ISSN from 773$x
+    if ($host_item_data->{issn}) {
+        push @should_clauses, {
+            term => {
+                'issn' => {
+                    value => $host_item_data->{issn},
+                    boost => 5.0,
+                }
+            }
+        };
+    }
+    
+    return (undef, 0) unless @should_clauses;
+    
+    my $query = {
+        query => {
+            bool => {
+                should => \@should_clauses,
+                minimum_should_match => 1,
+                must_not => [
+                    # Exclude component parts - we're looking for hosts
+                    { exists => { field => 'record-control-number-773w' } },
+                ],
+            },
+        },
+        # Sort by relevance score
+        sort => ['_score'],
+    };
+    
+    # Return more results for possible hosts (up to 10 potential matches)
+    my ($results, $total) = $self->search_records_no_scroll($query, {size => 10});
+    
+    return ($results, $total);
+}
+
 =head1 AUTHOR
 
 Johanna Räisä <johanna.raisa@koha-suomi.fi>
