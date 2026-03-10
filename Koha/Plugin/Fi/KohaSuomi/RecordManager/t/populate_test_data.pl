@@ -32,9 +32,9 @@ Number of host records to create (default: 10)
 
 Number of component parts per host (default: 3)
 
-=item B<--orphans=N>
+=item B<--broken-links=N>
 
-Number of orphan component parts to create (default: 5)
+Number of component parts with broken links to create per host (default: 2)
 
 =item B<--verbose>
 
@@ -48,30 +48,31 @@ Print this help message
 
 =head1 EXAMPLE
 
-    # Create 10 hosts with 3 components each, plus 5 orphans
-    perl populate_test_data.pl --hosts=10 --components=3 --orphans=5 --verbose
+    # Create 10 hosts with 3 components each, plus 2 broken links per host
+    perl populate_test_data.pl --hosts=10 --components=3 --broken-links=2 --verbose
 
 =head1 DESCRIPTION
 
 This script creates:
-- Host records (journals, books, proceedings)
+- Host records (journals, books, proceedings) with ISBN/ISSN
 - Component parts (articles, chapters) that correctly reference hosts
-- Orphan component parts that reference non-existent hosts
+- Component parts with BROKEN links - they have correct host metadata (title, author, ISBN/ISSN) 
+  in the 773 field but WRONG control number in 773$w, so they can be found with find_possible_hosts
 
 =cut
 
 my $num_hosts = 10;
 my $num_components = 3;
-my $num_orphans = 5;
+my $num_broken_links = 2;
 my $verbose = 0;
 my $help = 0;
 
 GetOptions(
-    'hosts=i'      => \$num_hosts,
-    'components=i' => \$num_components,
-    'orphans=i'    => \$num_orphans,
-    'verbose'      => \$verbose,
-    'help'         => \$help,
+    'hosts=i'         => \$num_hosts,
+    'components=i'    => \$num_components,
+    'broken-links=i'  => \$num_broken_links,
+    'verbose'         => \$verbose,
+    'help'            => \$help,
 ) or die "Error in command line arguments\n";
 
 if ($help) {
@@ -84,13 +85,13 @@ print "Populating Test Data for Record Manager\n";
 print "=" x 70 . "\n";
 print "Creating:\n";
 print "  - $num_hosts host records\n";
-print "  - $num_components component parts per host\n";
-print "  - $num_orphans orphan component parts\n";
+print "  - $num_components component parts per host (valid links)\n";
+print "  - $num_broken_links component parts per host (BROKEN links)\n";
 print "=" x 70 . "\n\n";
 
 my @host_records;
 my @component_records;
-my @orphan_records;
+my @broken_link_records;
 
 # Array of CNI prefixes used in Finnish libraries
 my @cni_prefixes = ('FI-MELINDA', 'FI-BTJ', 'FI-TATI');
@@ -183,11 +184,16 @@ for (my $i = 1; $i <= $num_hosts; $i++) {
         MARC::Field->new('001', "($cni)$control_number"),
     );
     
+    # Store ISBN/ISSN for later use in broken links
+    my $isbn = sprintf("978-952-%04d-%03d-1", int(rand(9999)), int(rand(999)));
+    my $issn = sprintf("%04d-%04d", int(rand(9999)), int(rand(9999)));
+    my $author = $authors[int(rand(scalar @authors))];
+    
     # Add basic fields
     if ($type_data->{type} eq 'journal') {
         # Journal - use 022 for ISSN, 260 for publication
         $marc->append_fields(
-            MARC::Field->new('022', '', '', 'a' => sprintf("%04d-%04d", int(rand(9999)), int(rand(9999)))),
+            MARC::Field->new('022', '', '', 'a' => $issn),
             MARC::Field->new('245', '0', '0', 'a' => $title),
             MARC::Field->new('260', '', '', 
                 'a' => 'Helsinki :',
@@ -198,8 +204,8 @@ for (my $i = 1; $i <= $num_hosts; $i++) {
     } elsif ($type_data->{type} eq 'book') {
         # Book - use 020 for ISBN
         $marc->append_fields(
-            MARC::Field->new('020', '', '', 'a' => sprintf("978-952-%04d-%03d-1", int(rand(9999)), int(rand(999)))),
-            MARC::Field->new('100', '1', '', 'a' => $authors[int(rand(scalar @authors))]),
+            MARC::Field->new('020', '', '', 'a' => $isbn),
+            MARC::Field->new('100', '1', '', 'a' => $author),
             MARC::Field->new('245', '1', '0', 'a' => $title),
             MARC::Field->new('260', '', '', 
                 'a' => 'Helsinki :',
@@ -210,6 +216,7 @@ for (my $i = 1; $i <= $num_hosts; $i++) {
     } else {
         # Proceedings
         $marc->append_fields(
+            MARC::Field->new('100', '1', '', 'a' => $author),
             MARC::Field->new('245', '1', '0', 'a' => $title),
             MARC::Field->new('260', '', '', 
                 'a' => 'Helsinki :',
@@ -227,6 +234,9 @@ for (my $i = 1; $i <= $num_hosts; $i++) {
         cni => $cni,
         cni_control_number => "($cni)$control_number",
         title => $title,
+        author => $author,
+        isbn => $isbn,
+        issn => $issn,
         type => $type_data->{type},
     };
     
@@ -266,10 +276,23 @@ foreach my $host (@host_records) {
         );
         
         # Add 773 field linking to host
-        my @subfields = (
-            't' => $host->{title},
-            'w' => $host->{cni_control_number},
-        );
+        my @subfields = ();
+        
+        # Add author only if host has one (books and proceedings, not journals)
+        if ($host->{type} ne 'journal') {
+            push @subfields, 'a' => $host->{author};  # Host author
+        }
+        
+        # Always add title and control number
+        push @subfields, 't' => $host->{title};   # Host title
+        push @subfields, 'w' => $host->{cni_control_number};  # Control number
+        
+        # Add ISBN/ISSN for better matching
+        if ($host->{type} eq 'journal') {
+            push @subfields, 'x' => $host->{issn};  # ISSN
+        } elsif ($host->{type} eq 'book') {
+            push @subfields, 'z' => $host->{isbn};  # ISBN
+        }
         
         # Add volume/issue info for journals
         if ($host->{type} eq 'journal') {
@@ -305,65 +328,97 @@ foreach my $host (@host_records) {
 
 print "Created " . scalar(@component_records) . " component part records\n\n";
 
-print "Creating orphan component parts (no host)...\n";
+print "Creating component parts with BROKEN links (but host exists)...\n";
 
-# Create orphan component parts (references to non-existent hosts)
-for (my $i = 1; $i <= $num_orphans; $i++) {
-    my $title_idx = int(rand(scalar @component_titles));
-    my $title = $component_titles[$title_idx];
-    
-    my $cni = $cni_prefixes[int(rand(scalar @cni_prefixes))];
-    # Use control numbers that don't exist (999000+) - far from orphan's own 001 (800xxx)
-    my $nonexistent_control = 999000 + $i;
-    my $orphan_control = 800000 + $i;
-    
-    my $marc = MARC::Record->new();
-    $marc->encoding('UTF-8');
-    $marc->leader('00000naa a2200000 a 4500');
-    
-    # Add control number for the orphan itself
-    $marc->append_fields(
-        MARC::Field->new('001', "$orphan_control"),
-        MARC::Field->new('003', $cni),
-    );
-    
-    # Add author and title
-    $marc->append_fields(
-        MARC::Field->new('100', '1', '', 'a' => $authors[int(rand(scalar @authors))]),
-        MARC::Field->new('245', '1', '0', 'a' => $title . " [ORPHAN]"),
-    );
-    
-    # Add 773 field with non-existent host control number
-    $marc->append_fields(
-        MARC::Field->new('773', '0', '8',
-            't' => "Non-existent Host Record $i",
-            'w' => "($cni)$nonexistent_control",
-            'g' => sprintf("Vol. %d (%d)", int(rand(50)) + 1, 2020 + int(rand(6))),
-        ),
-    );
-    
-    my ($biblionumber, $biblioitemnumber) = C4::Biblio::AddBiblio($marc, '');
-    
-    push @orphan_records, {
-        biblionumber => $biblionumber,
-        missing_control => "($cni)$nonexistent_control",
-        title => $title,
-    };
-    
-    if ($verbose) {
-        print "  Created orphan #$i: $title [missing host: ($cni)$nonexistent_control]\n";
+# Create component parts with broken control number links but correct metadata
+# These should be findable using the find_possible_hosts endpoint
+my $broken_count = 0;
+foreach my $host (@host_records) {
+    for (my $j = 1; $j <= $num_broken_links; $j++) {
+        $broken_count++;
+        my $title_idx = int(rand(scalar @component_titles));
+        my $title = $component_titles[$title_idx];
+        
+        my $component_control_number = 300000 + $broken_count;
+        
+        # Use a WRONG control number (999000+) that doesn't exist
+        my $wrong_control_number = 999000 + $broken_count;
+        
+        my $marc = MARC::Record->new();
+        $marc->encoding('UTF-8');
+        $marc->leader('00000naa a2200000 a 4500');
+        
+        # Add control number for the component part
+        $marc->append_fields(
+            MARC::Field->new('001', "$component_control_number"),
+            MARC::Field->new('003', $host->{cni}),
+        );
+        
+        # Add author and title
+        $marc->append_fields(
+            MARC::Field->new('100', '1', '', 'a' => $authors[int(rand(scalar @authors))]),
+            MARC::Field->new('245', '1', '0', 'a' => $title . " [BROKEN LINK]"),
+        );
+        
+        # Add 773 field with WRONG control number but CORRECT metadata
+        my @subfields = ();
+        
+        # Add author only if host has one (books and proceedings, not journals)
+        if ($host->{type} ne 'journal') {
+            push @subfields, 'a' => $host->{author};  # Correct author from host
+        }
+        
+        # Always add title and control number
+        push @subfields, 't' => $host->{title};   # Correct title from host
+        push @subfields, 'w' => "($host->{cni})$wrong_control_number";  # WRONG control number!
+        
+        # Add ISBN/ISSN from host - this is what find_possible_hosts will use
+        if ($host->{type} eq 'journal') {
+            push @subfields, 'x' => $host->{issn};  # Correct ISSN
+            push @subfields, 'g' => sprintf("Vol. %d, No. %d (%d), p. %d-%d", 
+                int(rand(50)) + 1, 
+                int(rand(4)) + 1, 
+                2020 + int(rand(6)),
+                int(rand(90)) + 10,
+                int(rand(90)) + 110
+            );
+        } elsif ($host->{type} eq 'book') {
+            push @subfields, 'z' => $host->{isbn};  # Correct ISBN
+            push @subfields, 'g' => sprintf("p. %d-%d", int(rand(50)) + 10, int(rand(50)) + 60);
+        }
+        
+        $marc->append_fields(
+            MARC::Field->new('773', '0', '8', @subfields),
+        );
+        
+        my ($biblionumber, $biblioitemnumber) = C4::Biblio::AddBiblio($marc, '');
+        
+        push @broken_link_records, {
+            biblionumber => $biblionumber,
+            host_biblionumber => $host->{biblionumber},
+            wrong_control => "($host->{cni})$wrong_control_number",
+            correct_control => $host->{cni_control_number},
+            title => $title,
+            host_title => $host->{title},
+        };
+        
+        if ($verbose) {
+            print "  Created broken link #$broken_count: $title\n";
+            print "    -> Wrong control: ($host->{cni})$wrong_control_number\n";
+            print "    -> Correct host: $host->{title} [$host->{cni_control_number}]\n";
+        }
     }
 }
 
-print "Created " . scalar(@orphan_records) . " orphan records\n\n";
+print "Created " . scalar(@broken_link_records) . " broken link records\n\n";
 
 print "=" x 70 . "\n";
 print "Summary:\n";
 print "=" x 70 . "\n";
-print "Host records:           " . scalar(@host_records) . "\n";
-print "Component parts:        " . scalar(@component_records) . "\n";
-print "Orphan components:      " . scalar(@orphan_records) . "\n";
-print "Total records created:  " . (scalar(@host_records) + scalar(@component_records) + scalar(@orphan_records)) . "\n";
+print "Host records:              " . scalar(@host_records) . "\n";
+print "Component parts (valid):   " . scalar(@component_records) . "\n";
+print "Component parts (broken):  " . scalar(@broken_link_records) . "\n";
+print "Total records created:     " . (scalar(@host_records) + scalar(@component_records) + scalar(@broken_link_records)) . "\n";
 print "=" x 70 . "\n\n";
 
 if ($verbose) {
@@ -375,22 +430,29 @@ if ($verbose) {
             $host->{title}, 
             $host->{cni_control_number}
         );
+        print sprintf("        ISBN: %s, ISSN: %s\n", $host->{isbn} || 'N/A', $host->{issn} || 'N/A');
     }
     
-    print "\nOrphan Records (for testing):\n";
+    print "\nBroken Link Records (for testing find_possible_hosts):\n";
     print "-" x 70 . "\n";
-    foreach my $orphan (@orphan_records) {
-        print sprintf("  [%d] %s -> missing [%s]\n", 
-            $orphan->{biblionumber}, 
-            $orphan->{title}, 
-            $orphan->{missing_control}
+    foreach my $broken (@broken_link_records) {
+        print sprintf("  [%d] %s\n", 
+            $broken->{biblionumber}, 
+            $broken->{title}
+        );
+        print sprintf("        Wrong 773\$w: %s\n", $broken->{wrong_control});
+        print sprintf("        Actual host: [%d] %s (%s)\n", 
+            $broken->{host_biblionumber},
+            $broken->{host_title},
+            $broken->{correct_control}
         );
     }
     print "\n";
 }
 
-print "Done! You can now test orphan record detection.\n";
-print "Orphan records should appear in the /records/orphans API endpoint.\n";
+print "Done! You can now test the find_possible_hosts functionality.\n";
+print "Broken link records should appear in /records/orphans endpoint.\n";
+print "Use /records/{biblionumber}/possible-hosts to find the correct host.\n";
 
 sub print_help {
     print <<'HELP';
@@ -400,18 +462,18 @@ SYNOPSIS:
     perl populate_test_data.pl [options]
 
 OPTIONS:
-    --hosts=N       Number of host records to create (default: 10)
-    --components=N  Number of component parts per host (default: 3)
-    --orphans=N     Number of orphan component parts (default: 5)
-    --verbose       Print detailed output
-    --help          Show this help message
+    --hosts=N         Number of host records to create (default: 10)
+    --components=N    Number of component parts per host with valid links (default: 3)
+    --broken-links=N  Number of component parts per host with broken links (default: 2)
+    --verbose         Print detailed output
+    --help            Show this help message
 
 EXAMPLES:
     # Use defaults
     perl populate_test_data.pl
 
     # Create more test data
-    perl populate_test_data.pl --hosts=20 --components=5 --orphans=10
+    perl populate_test_data.pl --hosts=20 --components=5 --broken-links=3
 
     # Verbose output
     perl populate_test_data.pl --verbose
@@ -421,18 +483,22 @@ DESCRIPTION:
     
     1. Host Records: Journal issues, books, conference proceedings
        - Each has a control number in 001 field
+       - Include ISBN (for books) and ISSN (for journals)
        - Can be referenced by component parts
     
-    2. Component Parts: Articles, chapters, papers
+    2. Component Parts (Valid): Articles, chapters, papers
        - Have MARC 773 field with $w pointing to host control number
        - Correctly link to existing host records
     
-    3. Orphan Component Parts: Articles with missing hosts
-       - Have MARC 773$w pointing to NON-EXISTENT control numbers
-       - These should appear in the orphan records API
+    3. Component Parts (Broken Links): Articles with incorrect control numbers
+       - Have MARC 773 field with WRONG control number in $w (999000+)
+       - BUT have CORRECT metadata: title, author, ISBN/ISSN in other subfields
+       - The actual host record EXISTS in the database
+       - These test the find_possible_hosts functionality
     
-    The orphan records use control numbers 999000+ which don't exist,
-    making them easy to identify in the orphan detection system.
+    The broken link records can be found in /records/orphans endpoint.
+    Use /records/{biblionumber}/possible-hosts to find the correct host
+    by searching with the metadata from the 773 field.
 
 HELP
 }
