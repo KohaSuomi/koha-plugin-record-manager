@@ -153,7 +153,7 @@ subtest 'GET orphan records with custom pagination' => sub {
 };
 
 subtest 'GET orphan records with invalid pagination parameters' => sub {
-    plan tests => 10;
+    plan tests => 6;
     
     # Begin transaction
     $schema->storage->txn_begin;
@@ -168,27 +168,24 @@ subtest 'GET orphan records with invalid pagination parameters' => sub {
     
     my $userid = $patron->userid;
     
-    # Test with page = 0 (should default to 1)
-    my $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=0")
-        ->status_is(200)
-        ->json_is('/pagination/page', 1, 'Invalid page 0 defaults to 1');
+    # Test with page = 0 (should be rejected as invalid - minimum is 1)
+    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=0")
+        ->status_is(400, 'Invalid page 0 returns 400 Bad Request');
     
-    # Test with negative page (should default to 1)
-    $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=-5")
-        ->status_is(200)
-        ->json_is('/pagination/page', 1, 'Negative page defaults to 1');
+    # Test with negative page (should be rejected as invalid)
+    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=-5")
+        ->status_is(400, 'Negative page returns 400 Bad Request');
     
-    # Test with per_page > 100 (should default to 20)
-    $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?per_page=150")
-        ->status_is(200)
-        ->json_is('/pagination/per_page', 20, 'Per_page > 100 defaults to 20');
+    # Test with per_page > 100 (should be rejected as invalid - maximum is 100)
+    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?per_page=150")
+        ->status_is(400, 'Per_page > 100 returns 400 Bad Request');
     
     # Rollback the transaction
     $schema->storage->txn_rollback;
 };
 
 subtest 'GET orphan records without authentication' => sub {
-    plan tests => 1;
+    plan tests => 2;
     
     # Begin transaction
     $schema->storage->txn_begin;
