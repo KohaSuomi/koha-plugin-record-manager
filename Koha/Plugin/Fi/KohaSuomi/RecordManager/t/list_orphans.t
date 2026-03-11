@@ -48,32 +48,26 @@ sub _create_mock_orphans {
     
     my @orphans;
     for (my $i = 1; $i <= $count; $i++) {
-        # Create a component part biblio (article/chapter)
-        my $component = $builder->build_object({
-            class => 'Koha::Biblios',
-            value => {
-                title => "Component Part $i: Test Article",
-                author => "Test Author $i",
-                datecreated => '2026-01-01',
-            }
-        });
+        # Create a MARC record for component part
+        my $marc = MARC::Record->new();
+        my $title_field = MARC::Field->new('245', '0', '0', 'a' => "Component Part $i: Test Article");
+        my $author_field = MARC::Field->new('100', '0', '0', 'a' => "Test Author $i");
         
         # Add MARC field 773 to indicate it's a component part
         # 773$w contains the control number of the (missing) host record
-        my $biblio = Koha::Biblios->search({ biblionumber => $component->biblionumber })->next;
-        my $marc = $biblio->metadata->record;
         my $field773 = MARC::Field->new(
             '773', '0', '8',
             't' => "Missing Host Record $i",  # Host title
             'w' => "(FI-MELINDA)" . (900000 + $i),  # Non-existent control number
         );
-        $marc->append_fields($field773);
         
-        # Update the biblio with modified MARC
-        C4::Biblio::ModBiblio($marc, $component->biblionumber, '');
+        $marc->append_fields($title_field, $author_field, $field773);
+        
+        # Add the biblio using C4::Biblio::AddBiblio
+        my ($biblionumber, $biblioitemnumber) = C4::Biblio::AddBiblio($marc, '');
         
         push @orphans, {
-            biblionumber => $component->biblionumber,
+            biblionumber => $biblionumber,
             control_number => (900000 + $i),
             cni => 'FI-MELINDA',
             title => "Component Part $i: Test Article",
@@ -107,7 +101,7 @@ subtest 'GET orphan records with default pagination' => sub {
     my $orphans = _create_mock_orphans($builder, 5);
     
     # Call the API endpoint with user credentials
-    my $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/recordmanager/records/orphans")
+    my $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans")
         ->status_is(200)
         ->json_has('/orphans', 'Response has orphans array')
         ->json_has('/pagination', 'Response has pagination object')
@@ -141,7 +135,7 @@ subtest 'GET orphan records with custom pagination' => sub {
     my $userid = $patron->userid;
     
     # Test with custom page and per_page parameters
-    my $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/recordmanager/records/orphans?page=2&per_page=10")
+    my $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=2&per_page=10")
         ->status_is(200)
         ->json_has('/orphans')
         ->json_has('/pagination')
@@ -149,7 +143,7 @@ subtest 'GET orphan records with custom pagination' => sub {
         ->json_is('/pagination/per_page', 10, 'Per page is 10');
     
     # Test with page 1 and per_page 50
-    $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/recordmanager/records/orphans?page=1&per_page=50")
+    $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=1&per_page=50")
         ->status_is(200)
         ->json_is('/pagination/page', 1, 'Page is 1')
         ->json_is('/pagination/per_page', 50, 'Per page is 50');
@@ -159,7 +153,7 @@ subtest 'GET orphan records with custom pagination' => sub {
 };
 
 subtest 'GET orphan records with invalid pagination parameters' => sub {
-    plan tests => 10;
+    plan tests => 6;
     
     # Begin transaction
     $schema->storage->txn_begin;
@@ -174,33 +168,30 @@ subtest 'GET orphan records with invalid pagination parameters' => sub {
     
     my $userid = $patron->userid;
     
-    # Test with page = 0 (should default to 1)
-    my $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/recordmanager/records/orphans?page=0")
-        ->status_is(200)
-        ->json_is('/pagination/page', 1, 'Invalid page 0 defaults to 1');
+    # Test with page = 0 (should be rejected as invalid - minimum is 1)
+    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=0")
+        ->status_is(400, 'Invalid page 0 returns 400 Bad Request');
     
-    # Test with negative page (should default to 1)
-    $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/recordmanager/records/orphans?page=-5")
-        ->status_is(200)
-        ->json_is('/pagination/page', 1, 'Negative page defaults to 1');
+    # Test with negative page (should be rejected as invalid)
+    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?page=-5")
+        ->status_is(400, 'Negative page returns 400 Bad Request');
     
-    # Test with per_page > 100 (should default to 20)
-    $response = $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/recordmanager/records/orphans?per_page=150")
-        ->status_is(200)
-        ->json_is('/pagination/per_page', 20, 'Per_page > 100 defaults to 20');
+    # Test with per_page > 100 (should be rejected as invalid - maximum is 100)
+    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans?per_page=150")
+        ->status_is(400, 'Per_page > 100 returns 400 Bad Request');
     
     # Rollback the transaction
     $schema->storage->txn_rollback;
 };
 
 subtest 'GET orphan records without authentication' => sub {
-    plan tests => 1;
+    plan tests => 2;
     
     # Begin transaction
     $schema->storage->txn_begin;
     
     # Attempt to access without credentials
-    $t->get_ok("/api/v1/contrib/kohasuomi/recordmanager/records/orphans")
+    $t->get_ok("/api/v1/contrib/kohasuomi/records/orphans")
         ->status_is(401);
     
     # Rollback the transaction
@@ -224,7 +215,7 @@ subtest 'GET orphan records with insufficient permissions' => sub {
     my $userid = $patron->userid;
     
     # Attempt to access without proper permissions
-    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/recordmanager/records/orphans")
+    $t->get_ok("//$userid:$password@/api/v1/contrib/kohasuomi/records/orphans")
         ->status_is(403);
     
     # Rollback the transaction
