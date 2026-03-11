@@ -1,5 +1,5 @@
-
 const app = Vue.createApp({
+
     data() {
         return {
             contents: [],
@@ -7,40 +7,110 @@ const app = Vue.createApp({
             selectedContent: null,
             loading: true,
             loading_modal: false,
-            possible_hosts: []
+            possible_hosts: [],
+            sortKey: '',
+            sortOrder: 1,
+            searchQuery: '',
+            record_id: null
         };
     },
 
+    computed: {
+        // Suodatettu ja järjestetty lista
+        sortedContents() {
+            let filtered = this.contents;
+
+            if (this.searchQuery) {
+                const q = this.searchQuery.toLowerCase();
+                filtered = this.contents.filter(content =>
+                    (content.author && content.author.toLowerCase().includes(q)) ||
+                    (content.title && content.title.toLowerCase().includes(q)) ||
+                    (content.control_number && content.control_number.toLowerCase().includes(q)) ||
+                    (content.host_item && content.host_item.toLowerCase().includes(q))
+                );
+            }
+
+            if (!this.sortKey) return filtered;
+
+            return [...filtered].sort((a, b) => {
+                let valA = a[this.sortKey] || '';
+                let valB = b[this.sortKey] || '';
+                if (valA < valB) return -1 * this.sortOrder;
+                if (valA > valB) return 1 * this.sortOrder;
+                return 0;
+            });
+        },
+
+        // Sorttausikoni sarakeotsikoille
+        sortOrderIcon() {
+            return this.sortOrder === 1 ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill';
+        }
+    },
+
     methods: {
+        // Palauttaa järjestyksen oletukseksi
+        resetSort() {
+            this.sortKey = '';
+            this.sortOrder = 1;
+        },
+
+        // Sarakkeiden sorttaus
+        sortBy(key) {
+            if (this.sortKey === key) this.sortOrder *= -1;
+            else { this.sortKey = key; this.sortOrder = 1; }
+        },
+
+        // Palauttaa luokan prosentille
+        scoreClass(score) {
+            if (score >= 80) return 'bg-success text-white fw-bold';   // Vihreä tausta, valkoinen teksti
+            if (score >= 50) return 'bg-warning text-dark fw-bold';    // Keltainen tausta, tumma teksti
+            return 'bg-danger text-white fw-bold';                     // Punainen tausta, valkoinen teksti
+        },
+
+        // Hae tietueet
         fetchContents() {
             axios.get(`/api/v1/contrib/kohasuomi/records/orphans`)
-                .then(response => {
-                    this.contents = response.data.orphans;
-                })
-                .catch(error => {
-                    console.error('virhe haettaessa emoja:', error);
-                    this.error = 'Virhe tietoja haettaessa';
-                }).finally(() => {
-                    this.loading = false;
-                });
-        }, 
+                .then(response => { this.contents = response.data.orphans; })
+                .catch(error => { console.error('virhe haettaessa emoja:', error); this.error = 'Virhe tietoja haettaessa'; })
+                .finally(() => { this.loading = false; });
+        },
+
+        // Hae mahdolliset emot
         fetchPossibleHosts(id) {
+            this.record_id = id;
             this.loading_modal = true;
             axios.get(`/api/v1/contrib/kohasuomi/records/orphans/${id}/possible-hosts`)
-                .then(response => {
-                    this.possible_hosts = response.data.possible_hosts;
+                .then(response => { this.possible_hosts = response.data.possible_hosts; })
+                .catch(error => { console.error('Error fetching possible hosts:', error); this.error = 'An error occurred while fetching possible hosts'; })
+                .finally(() => { this.loading_modal = false; });
+        },
+        // Poista tietue
+        deleteRecord() {
+            if (!confirm('Haluatko varmasti poistaa tämän tietueen? Tätä toimintoa ei voi peruuttaa.')) return;
+
+            axios.delete(`/api/v1/biblios/${this.record_id}`)
+                .then(() => {
+                    this.contents = this.contents.filter(content => content.id !== this.record_id);
+                    this.possible_hosts = [];
+                    this.record_id = null;
                 })
-                .catch(error => {
-                    console.error('Error fetching possible hosts:', error);
-                    this.error = 'An error occurred while fetching possible hosts';
-                }).finally(() => {
-                    this.loading_modal = false;
+                .catch(error => { console.error('Error deleting record:', error); this.error = 'An error occurred while deleting the record'; })
+                .finally(() => {  
+                    // Suljetaan modal automaattisesti
+                    const modalEl = document.getElementById('possibleHostsModal');
+                    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if (modalInstance) {
+                        modalInstance.hide();
+                    }
                 });
         }
     },
+
+    // Kun komponentti mountataan, haetaan tietueet
     mounted() {
         this.fetchContents();
-    },
+    }
+
 });
 
 app.mount('#recordManagerApp');
