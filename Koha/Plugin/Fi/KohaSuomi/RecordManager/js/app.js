@@ -8,6 +8,7 @@ const app = Vue.createApp({
             loading: true,
             loading_modal: false,
             possible_hosts: [],
+            componentpart: null,
             sortKey: '',
             sortOrder: 1,
             searchQuery: '',
@@ -60,11 +61,10 @@ const app = Vue.createApp({
             else { this.sortKey = key; this.sortOrder = 1; }
         },
 
-        // Palauttaa luokan prosentille
+        // Palauttaa luokan prosentille (haalea tausta ja musta teksti)
         scoreClass(score) {
-            if (score >= 80) return 'bg-success text-white fw-bold';   // Vihreä tausta, valkoinen teksti
-            if (score >= 50) return 'bg-warning text-dark fw-bold';    // Keltainen tausta, tumma teksti
-            return 'bg-danger text-white fw-bold';                     // Punainen tausta, valkoinen teksti
+            if (score >= 50) return 'score-badge score-high';
+            return 'score-badge score-medium';
         },
 
         // Hae tietueet
@@ -79,11 +79,21 @@ const app = Vue.createApp({
         fetchPossibleHosts(id) {
             this.record_id = id;
             this.loading_modal = true;
+
             axios.get(`/api/v1/contrib/kohasuomi/records/orphans/${id}/possible-hosts`)
-                .then(response => { this.possible_hosts = response.data.possible_hosts; })
-                .catch(error => { console.error('Error fetching possible hosts:', error); this.error = 'An error occurred while fetching possible hosts'; })
-                .finally(() => { this.loading_modal = false; });
+                .then(response => { 
+                    this.possible_hosts = response.data.possible_hosts; 
+                    this.componentpart = response.data.component_data; 
+                })
+                .catch(error => { 
+                    console.error('Error fetching possible hosts:', error); 
+                    this.error = 'An error occurred while fetching possible hosts'; 
+                })
+                .finally(() => { 
+                    this.loading_modal = false; 
+                });
         },
+
         // Poista tietue
         deleteRecord() {
             if (!confirm('Haluatko varmasti poistaa tämän tietueen? Tätä toimintoa ei voi peruuttaa.')) return;
@@ -94,17 +104,46 @@ const app = Vue.createApp({
                     this.possible_hosts = [];
                     this.record_id = null;
                 })
-                .catch(error => { console.error('Error deleting record:', error); this.error = 'An error occurred while deleting the record'; })
+                .catch(error => { 
+                    console.error('Error deleting record:', error); 
+                    this.error = 'An error occurred while deleting the record'; 
+                })
                 .finally(() => {  
-                    // Suljetaan modal automaattisesti
                     const modalEl = document.getElementById('possibleHostsModal');
                     const modalInstance = bootstrap.Modal.getInstance(modalEl);
+
                     if (modalInstance) {
                         modalInstance.hide();
                     }
                 });
-        }
-    },
+        },
+
+            // LISÄTTY: Yhdistä osakohde emokohteeseen
+            combineToHost(host_biblionumber) {
+                if (!confirm('Haluatko varmasti yhdistää tämän osakohteen valittuun emokohteeseen?')) return;
+
+                axios.post(`/api/v1/contrib/kohasuomi/records/orphans/combine`, {
+                    orphan_biblionumber: this.record_id,
+                    host_biblionumber: host_biblionumber
+                })
+                .then(() => {
+                    // Poistetaan yhdistetty osakohde listalta
+                    this.contents = this.contents.filter(content => content.id !== this.record_id);
+                    this.possible_hosts = [];
+                    this.record_id = null;
+                })
+                .catch(error => {
+                    console.error('Error combining orphan to host:', error);
+                    this.error = 'Virhe yhdistettäessä osakohdetta emoon';
+                })
+                .finally(() => {
+                    const modalEl = document.getElementById('possibleHostsModal');
+                    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if (modalInstance) modalInstance.hide();
+                });
+        }   
+
+   },
 
     // Kun komponentti mountataan, haetaan tietueet
     mounted() {

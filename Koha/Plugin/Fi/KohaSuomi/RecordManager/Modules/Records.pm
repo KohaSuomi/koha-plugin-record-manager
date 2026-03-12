@@ -361,7 +361,7 @@ sub combine_orphan_to_host {
     my $frameworkcode = $orphan_biblio->frameworkcode;
     C4::Biblio::ModBiblio($orphan_marcrecord, $orphan_biblionumber, $frameworkcode);
     
-    return 1;
+    return { error => 0, message => 'Orphan record successfully combined to host' };
 }
 
 =head1 AUTHOR
