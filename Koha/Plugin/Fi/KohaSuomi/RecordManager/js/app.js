@@ -49,8 +49,49 @@ const app = Vue.createApp({
     },
 
     methods: {
+
+
+        exportList() {
+            if (!this.sortedContents || this.sortedContents.length === 0) {
+                alert("Ei vietävää dataa");
+                return;
+            }
+
+            const headers = ["Tietue", "Kontrollikenttä", "Emo"];
+
+            const rows = this.sortedContents.map(item => [
+                `${item.author || ""}, ${item.title || ""}`,
+                item.control_number || "",
+                item.host_item || ""
+            ]);
+
+            const csv = "\uFEFF" + [headers, ...rows]
+                .map(r => r.map(v => `"${v}"`).join(";"))
+                .join("\n");
+
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+
+            // 🚀 Luo aikaleima muodossa YYYYMMDD_HHMMSS
+            const now = new Date();
+            const pad = (n) => n.toString().padStart(2, "0");
+            const timestamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+            const filename = `tietueet_${timestamp}.csv`;
+
+            const link = document.createElement("a");
+            link.href = url;
+            link.setAttribute("download", filename);
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            URL.revokeObjectURL(url);
+        },
         // Palauttaa järjestyksen oletukseksi
-        resetSort() {
+        resetSort () {
+        
             this.sortKey = '';
             this.sortOrder = 1;
         },

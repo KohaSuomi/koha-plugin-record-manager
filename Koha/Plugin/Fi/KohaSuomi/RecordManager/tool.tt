@@ -116,9 +116,18 @@
 
               <div class="card-body">
 
-              <!-- Hakukenttä ja palautusnappi -->
-              <div class="mb-3 d-flex gap-2">
+              
+               
                 <div class="input-group">
+                  <!-- Hakukenttä ja palautusnappi -->
+                  <button 
+                    class="btn btn-success d-flex align-items-center"
+                    @click="exportList"
+                    title="Vie lista"
+                  >
+                    <i class="bi bi-download me-2"></i>
+                    <span>Vie</span>
+                  </button>
                   <span class="input-group-text">
                     <i class="bi bi-search"></i>
                   </span>
